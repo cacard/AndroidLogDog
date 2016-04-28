@@ -1,5 +1,8 @@
 package cacard;
 
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+
 /**
  * Created by cunqingli on 2016/4/28.
  */
@@ -8,15 +11,27 @@ public class ReadingLogThread implements Runnable {
     private boolean isStop;
     private boolean isPause;
     private Object lock4Pause = new Object();
+    private Process process;
+    private Callback mCallback;
 
-    public ReadingLogThread() {
+    public interface Callback {
+        void onLogCome(String line);
     }
 
-    public void stop() {
+    public ReadingLogThread(Callback callback) {
+        this.mCallback = callback;
+        try {
+            process = Runtime.getRuntime().exec("logcat logdog:v -d");
+        } catch (Exception e) {
+            //
+        }
+    }
+
+    public void stopReading() {
         isStop = true;
     }
 
-    public void pause() {
+    public void pauseReading() {
         isPause = true;
     }
 
@@ -25,22 +40,46 @@ public class ReadingLogThread implements Runnable {
         lock4Pause.notify();
     }
 
+    public void destory() {
+
+    }
+
     @Override
     public void run() {
-        while (true && !Thread.currentThread().isInterrupted()/* invoker can use interrupt to stop this thread */) {
-            if (isStop) {
-                break;
-            }
+        if (process != null) {
+            BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(process.getInputStream()));
 
-            if (isPause) {
+            while (true && !Thread.currentThread().isInterrupted()/* invoker can use interrupt to stop this thread */) {
+                if (isStop) {
+                    break;
+                }
+
+                if (isPause) {
+                    LogUtil.log("run() paused.");
+                    try {
+                        lock4Pause.wait();
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                    }
+                }
+
                 try {
-                    lock4Pause.wait();
+                    final String line = bufferedReader.readLine();
+                    if (line != null) {
+                        mCallback.onLogCome(line);
+                    }
                 } catch (Exception e) {
                     e.printStackTrace();
                 }
+
             }
         }
 
-        LogUtil.log(ReadingLogThread.class.getSimpleName(), "run", "run will quite.thread stop");
+
+        dump("run() will quite.thread stop");
+    }
+
+    private static void dump(String msg) {
+        LogUtil.log(ReadingLogThread.class.getSimpleName() + "|" + msg);
     }
 }
